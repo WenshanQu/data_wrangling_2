@@ -1,0 +1,209 @@
+---
+title: "5.2_strings_and_factors"
+author: "Wenshan Qu (wq2160)"
+date: "10/21/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(p8105.datasets)
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## String vectors
+
+We create a string vector.
+```{r}
+string_vec = c("my", "name", "is", "jeff")
+```
+Find cases where the match exists
+```{r}
+str_detect(string_vec, "m")
+str_detect(string_vec, "jeff")
+
+str_replace(string_vec, "j", "J")
+```
+
+Another string vector
+```{r}
+string_vec = c(
+  "i think we all rule for participating",
+  "i think i have been caught",
+  "i think this will be quite fun actually",
+  "it will be fun, i think"
+  )
+
+str_detect(string_vec, "i think")
+str_detect(string_vec, "^i think") ## find "i think" at the beginning of the line
+str_detect(string_vec, "i think$") ## find "i think" at the end of the line
+```
+
+Another case:
+```{r}
+string_vec = c(
+  "Y'all remember Pres. HW Bush?",
+  "I saw a green bush",
+  "BBQ and Bushwalking at Molonglo Gorge",
+  "BUSH -- LIVE IN CONCERT!!"
+  )
+
+str_detect(string_vec,"[Bb]ush") ## find both "Bush" and "bush"
+```
+
+Another case:
+```{r}
+string_vec = c(
+  '7th inning stretch',
+  '1st half soon to begin. Texas won the toss.',
+  'she is 5 feet 4 inches tall',
+  '3AM - cant sleep :('
+  )
+
+str_detect(string_vec, "[0-9][a-zA-Z]") ## provide a range of letters or numbers that count as a match.
+```
+
+Another:
+```{r}
+string_vec = c(
+  'Its 7:11 in the evening',
+  'want to go to 7-11?',
+  'my flight is AA711',
+  'NetBios: scanning ip 203.167.114.66'
+  )
+
+str_detect(string_vec, "7.11") ## you want to search 7 and 11 no matter what's between them!
+```
+
+Another:
+```{r}
+string_vec = c(
+  'The CI is [2, 5]',
+  ':-]',
+  ':-[',
+  'I found the answer on pages [6-7]'
+  )
+
+str_detect(string_vec, "\\[") ## Looking for a special character.
+```
+
+Some characters are “special”. These include `[` and `]`, `(` and `)`, and `.`. If you want to search for these, you have to indicate they’re special using `\`. Unfortunately, `\` is also special. 
+
+
+## Why factors are weird
+
+```{r}
+factor_vec = factor(c("male", "male", "female", "female"))
+factor_vec
+
+as.numeric(factor_vec)
+
+## If you manually relevel the factor...
+factor_vec = fct_relevel(factor_vec, "male")
+
+as.numeric(factor_vec)
+```
+
+##NSDUH
+```{r}
+nsduh_url = "http://samhda.s3-us-gov-west-1.amazonaws.com/s3fs-public/field-uploads/2k15StateFiles/NSDUHsaeShortTermCHG2015.htm"
+
+table_marj = 
+  read_html(nsduh_url) %>% 
+  html_table() %>% 
+  first() %>%
+  slice(-1)
+
+table_marj
+
+```
+
+Clean the data
+
+```{r}
+data_marj = 
+  table_marj %>%
+  select(-contains("P Value")) %>%
+  pivot_longer(
+    -State,
+    names_to = "age_year",
+    values_to = "percent"
+  ) %>% 
+  separate(age_year, into = c("age", "year"), "\\(") %>%  ## for sep, we could also `-11`
+  mutate(
+    year = str_replace(year, "\\)", ""), ## delete the remaining ")"
+    percent = str_replace(percent, "[a-c]$", ""), ## clean the percent data values
+    percent = as.numeric(percent)
+  ) %>% 
+  filter(!(State %in% c("Total U.S.", "Northeast", "Midwest", "South", "West"))) ## `!` is a complement usage. "except"
+```
+
+```{r}
+data_marj %>%
+  filter(age == "12-17") %>% 
+  mutate(
+    State = fct_reorder(State, percent)  ## This is not necessary, but it will make the graph more clear!
+  ) %>% 
+  ggplot(aes(x = State, y = percent, color = year)) +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+## Restaurant Inspections
+
+```{r}
+data("rest_inspec")
+```
+
+`rest_inspec %>%  slice(1:100) %>% view()` helps us to see the first 100 rows of this huge dataset!
+
+```{r}
+rest_inspec %>% 
+  group_by(boro, grade) %>% 
+  summarize(count = n())
+
+rest_inspec %>% 
+  janitor::tabyl(boro, grade)
+
+## A simple filter
+rest_inspec = 
+rest_inspec %>% 
+  filter(
+    str_detect(grade, "[ABC]"),
+    !(boro == "Missing")
+    ) %>% 
+  mutate(boro = str_to_title(boro))
+```
+
+```{r}
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  janitor::tabyl(boro, grade)
+```
+
+```{r}
+rest_inspec %>% 
+  filter(str_detect(dba, "[Pp][Ii][Zz][Zz][Aa]")) %>% 
+  mutate(
+    boro = fct_infreq(boro),
+    boro = fct_recode(boro, "The City" = "Manhattan")) %>%
+  ggplot(aes(x = boro, fill = grade)) +
+  geom_bar()
+```
+
